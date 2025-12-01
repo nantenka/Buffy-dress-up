@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dress Buffy</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- MAIN MENU -->
+  <div id="screen_menu" class="screen active">
+    <h1 class="title">Dress Buffy as You Wish</h1>
+    <button id="startBtn" class="btn">Start</button>
+  </div>
+
+  <!-- CHARACTER DRESSING SCREEN -->
+  <div id="screen_game" class="screen">
+    <canvas id="gameCanvas" width="500" height="500"></canvas>
+
+    <div class="controls">
+      <div class="category">
+        <p>Head</p>
+        <button id="headLeft">←</button>
+        <button id="headRight">→</button>
+      </div>
+
+      <div class="category">
+        <p>Body</p>
+        <button id="bodyLeft">←</button>
+        <button id="bodyRight">→</button>
+      </div>
+
+      <div class="category">
+        <p>Legs</p>
+        <button id="legsLeft">←</button>
+        <button id="legsRight">→</button>
+      </div>
+    </div>
+
+    <button id="doneBtn" class="btn done">Done</button>
+  </div>
+
+  <!-- FINAL SCREEN -->
+  <div id="screen_final" class="screen">
+    <canvas id="exportCanvas" width="600" height="600" class="fade-in-scale"></canvas>
+
+    <input type="text" id="nickname" placeholder="Enter your name">
+    <button id="confirmBtn" class="btn">Confirm</button>
+    <button id="saveBtn" class="btn">Save PNG</button>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
