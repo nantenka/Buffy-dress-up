@@ -1,150 +1,171 @@
-// ====================== Screens ======================
-const menuScreen = document.getElementById("screen_menu");
-const gameScreen = document.getElementById("screen_game");
-const finalScreen = document.getElementById("screen_final");
+// ------------------ State ------------------
+let outfitState = { head: 0, body: 0, legs: 0 }; // индекс текущей одежды
+let animating = { head: false, body: false, legs: false };
+let images = {};
+let nickname = "";
 
-function show(screen) {
-  menuScreen.classList.remove("active");
-  gameScreen.classList.remove("active");
-  finalScreen.classList.remove("active");
+// ------------------ Clothes ------------------
+const headList = ["g1","g2","g3","g4"];
+const bodyList = ["t1","t2","t3","t4"];
+const legsList = ["s1","s2","s3","s4"];
+const baseGirl = "base"; // базовая девочка
 
-  screen.classList.add("active");
-}
-
-// ====================== Assets ======================
-const character = new Image();
-character.src = "images/base.png";
-
-let headIndex = 0;
-let bodyIndex = 0;
-let legsIndex = 0;
-
-const headList = ["g1.png","g2.png","g3.png","g4.png"];
-const bodyList = ["t1.png","t2.png","t3.png","t4.png"];
-const legsList = ["s1.png","s2.png","s3.png","s4.png"];
-
-const loaded = {};
-
-function loadAll() {
-  const all = [];
-
-  loaded.base = character;
-  all.push(wait(character));
-
-  headList.forEach(n => {
-    const img = new Image();
-    img.src = "images/" + n;
-    loaded[n] = img;
-    all.push(wait(img));
-  });
-
-  bodyList.forEach(n => {
-    const img = new Image();
-    img.src = "images/" + n;
-    loaded[n] = img;
-    all.push(wait(img));
-  });
-
-  legsList.forEach(n => {
-    const img = new Image();
-    img.src = "images/" + n;
-    loaded[n] = img;
-    all.push(wait(img));
-  });
-
-  return Promise.all(all);
-}
-
-function wait(img) {
-  return new Promise(res => {
-    img.onload = () => res();
-  });
-}
-
-// ====================== Game Canvas ======================
+// ------------------ Canvas ------------------
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-function drawCharacter(ctx, x=0, y=0, scale=1) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-
-  ctx.drawImage(loaded.base, 0, 0);
-
-  ctx.drawImage(loaded[headList[headIndex]], 0, 0);
-  ctx.drawImage(loaded[bodyList[bodyIndex]], 0, 0);
-  ctx.drawImage(loaded[legsList[legsIndex]], 0, 0);
-
-  ctx.restore();
-}
-
-function renderGame() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawCharacter(ctx, 120, 40, 1.3);
-}
-
-// ====================== Final Canvas ======================
 const exportCanvas = document.getElementById("exportCanvas");
 const exportCtx = exportCanvas.getContext("2d");
 
-// ====================== Controls ======================
-document.getElementById("headLeft").onclick = () => { headIndex = (headIndex - 1 + headList.length) % headList.length; renderGame(); };
-document.getElementById("headRight").onclick = () => { headIndex = (headIndex + 1) % headList.length; renderGame(); };
+// ------------------ Screens ------------------
+const mainScreen = document.getElementById("mainScreen");
+const gameScreen = document.getElementById("gameScreen");
+const finalScreen = document.getElementById("finalScreen");
 
-document.getElementById("bodyLeft").onclick = () => { bodyIndex = (bodyIndex - 1 + bodyList.length) % bodyList.length; renderGame(); };
-document.getElementById("bodyRight").onclick = () => { bodyIndex = (bodyIndex + 1) % bodyList.length; renderGame(); };
+function show(screen){
+  mainScreen.classList.remove("active");
+  gameScreen.classList.remove("active");
+  finalScreen.classList.remove("active");
+  screen.classList.add("active");
+}
 
-document.getElementById("legsLeft").onclick = () => { legsIndex = (legsIndex - 1 + legsList.length) % legsList.length; renderGame(); };
-document.getElementById("legsRight").onclick = () => { legsIndex = (legsIndex + 1) % legsList.length; renderGame(); };
+// ------------------ Load images ------------------
+function loadImages(list){
+  const promises = list.map(src => new Promise(res=>{
+    const img = new Image();
+    img.onload = ()=>{ images[src]=img; res(); };
+    img.onerror = ()=>{ console.warn("Not found:",src); images[src]=null; res(); };
+    img.src = "images/"+src+".png";
+  }));
+  return Promise.all(promises);
+}
 
-// ====================== Main Flow ======================
-document.getElementById("startBtn").onclick = () => {
-  show(gameScreen);
-  renderGame();
-};
+// ------------------ Draw character ------------------
+function drawCharacter(ctx, x, y, scale=1){
+  ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
 
-document.getElementById("doneBtn").onclick = () => {
+  // base girl
+  if(images[baseGirl]) ctx.drawImage(images[baseGirl], x, y, 200*scale, 400*scale);
+
+  // head
+  drawItem(ctx, headList[outfitState.head], x, y, scale, animating.head);
+  // body
+  drawItem(ctx, bodyList[outfitState.body], x, y, scale, animating.body);
+  // legs
+  drawItem(ctx, legsList[outfitState.legs], x, y, scale, animating.legs);
+}
+
+function drawItem(ctx, src, x, y, scale, animate){
+  const img = images[src];
+  if(!img) return;
+
+  if(animate){
+    let start = null;
+    function animateStep(ts){
+      if(!start) start = ts;
+      const progress = Math.min((ts-start)/300,1); // 300ms animation
+      ctx.globalAlpha = progress;
+      ctx.drawImage(img, x, y - 20*(1-progress), 200*scale, 400*scale);
+      ctx.globalAlpha = 1;
+      if(progress < 1) requestAnimationFrame(animateStep);
+    }
+    requestAnimationFrame(animateStep);
+    animating[src] = false;
+  } else {
+    ctx.drawImage(img, x, y, 200*scale, 400*scale);
+  }
+}
+
+// ------------------ Switch clothes ------------------
+function switchClothes(category, dir){
+  if(category === "head"){
+    animating.head = true;
+    outfitState.head = (outfitState.head + dir + headList.length) % headList.length;
+  } else if(category === "body"){
+    animating.body = true;
+    outfitState.body = (outfitState.body + dir + bodyList.length) % bodyList.length;
+  } else if(category === "legs"){
+    animating.legs = true;
+    outfitState.legs = (outfitState.legs + dir + legsList.length) % legsList.length;
+  }
+  drawCharacter(ctx, 150, 50, 1.5);
+}
+
+// ------------------ Button events ------------------
+// Head
+document.getElementById("headLeft").onclick = ()=>switchClothes("head",-1);
+document.getElementById("headRight").onclick = ()=>switchClothes("head",1);
+// Body
+document.getElementById("bodyLeft").onclick = ()=>switchClothes("body",-1);
+document.getElementById("bodyRight").onclick = ()=>switchClothes("body",1);
+// Legs
+document.getElementById("legsLeft").onclick = ()=>switchClothes("legs",-1);
+document.getElementById("legsRight").onclick = ()=>switchClothes("legs",1);
+
+// Start game
+document.getElementById("startBtn").onclick = ()=> show(gameScreen);
+
+// Done → pedestal screen
+document.getElementById("doneBtn").onclick = ()=>{
   show(finalScreen);
 
-  // Trigger appearance animation
+  // Animate exportCanvas
   exportCanvas.classList.remove("active");
-  setTimeout(() => exportCanvas.classList.add("active"), 50);
+  setTimeout(()=>exportCanvas.classList.add("active"),50);
 
-  // Draw final PNG
-  exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
-
-  // Background
-  exportCtx.fillStyle = "#1a1d2e";
-  exportCtx.fillRect(0, 0, 600, 600);
-
-  // Pedestal
-  exportCtx.fillStyle = "#ffffff22";
-  exportCtx.fillRect(100, 500, 400, 40);
-
-  // Character
-  drawCharacter(exportCtx, 150, 100, 1.5);
+  drawFinal();
 };
 
-// ====================== SAVE PNG ======================
-document.getElementById("saveBtn").onclick = () => {
+// Submit nickname
+document.getElementById("submitNick").onclick = ()=>{
+  nickname = document.getElementById("nickname").value || "Player";
+  drawFinal();
+  savePNG();
+};
+
+// ------------------ Final draw ------------------
+function drawFinal(){
+  exportCtx.clearRect(0,0,exportCanvas.width, exportCanvas.height);
+
+  // background gradient
+  const grad = exportCtx.createLinearGradient(0,0,0,600);
+  grad.addColorStop(0,"#0f0c29");
+  grad.addColorStop(0.5,"#302b63");
+  grad.addColorStop(1,"#24243e");
+  exportCtx.fillStyle = grad;
+  exportCtx.fillRect(0,0,600,600);
+
+  // pedestal
+  exportCtx.fillStyle = "#00ff99";
+  exportCtx.shadowColor = "#00ffe0";
+  exportCtx.shadowBlur = 30;
+  exportCtx.fillRect(100,500,400,40);
+  exportCtx.shadowBlur = 0;
+
+  // character
+  drawCharacter(exportCtx, 150, 100, 1.5);
+
+  // nickname
+  exportCtx.font = "28px Arial";
+  exportCtx.fillStyle = "#0ff";
+  exportCtx.shadowColor = "#0ff";
+  exportCtx.shadowBlur = 12;
+  exportCtx.fillText(nickname, 200, 470);
+  exportCtx.shadowBlur = 0;
+}
+
+// ------------------ Save PNG ------------------
+function savePNG(){
   const link = document.createElement("a");
-  link.download = "buffy.png";
+  link.download = "buffi.png";
   link.href = exportCanvas.toDataURL();
   link.click();
-};
+}
 
-// ====================== Confirm name ======================
-document.getElementById("confirmBtn").onclick = () => {
-  const name = document.getElementById("nickname").value.trim();
-  if (!name) return;
+// ------------------ Preload ------------------
+async function preload(){
+  await loadImages([baseGirl,...headList,...bodyList,...legsList]);
+  drawCharacter(ctx, 150, 50, 1.5);
+}
 
-  exportCtx.fillStyle = "white";
-  exportCtx.font = "28px Arial";
-  exportCtx.fillText(name, 20, 40);
-};
-
-// ====================== INIT ======================
-loadAll().then(() => {
-  console.log("All assets loaded!");
-});
+preload();
