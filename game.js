@@ -1,185 +1,132 @@
 // ------------------ State ------------------
-let outfitState = { head: 0, body: 0, legs: 0 }; // index current
-let animProgress = { head: 1, body: 1, legs: 1 }; // 0..1 animation progress (1 = finished)
-const animDuration = 300; // ms
-let lastTimestamp = 0;
-
-let images = {}; // loaded images
+let outfitState = { head: 0, body: 0, legs: 0 };
+let animating = { head: false, body: false, legs: false };
+let images = {};
 let nickname = "";
 
-// ------------------ Clothes (filenames without .png) ------------------
+// ------------------ Clothes ------------------
 const headList = ["g1","g2","g3","g4"];
 const bodyList = ["t1","t2","t3","t4"];
 const legsList = ["s1","s2","s3","s4"];
-const baseName = "base"; // images/base.png expected
+const baseGirl = "base";
 
-// ------------------ DOM ------------------
-const startBtn = document.getElementById("startBtn");
-const doneBtn = document.getElementById("doneBtn");
-const confirmBtn = document.getElementById("confirmBtn");
-const saveBtn = document.getElementById("saveBtn");
-
+// ------------------ Canvas ------------------
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 const exportCanvas = document.getElementById("exportCanvas");
 const exportCtx = exportCanvas.getContext("2d");
 
-const screenMenu = document.getElementById("screen_menu");
-const screenGame = document.getElementById("screen_game");
-const screenFinal = document.getElementById("screen_final");
+// ------------------ Screens ------------------
+const mainScreen = document.getElementById("screen_menu");
+const gameScreen = document.getElementById("screen_game");
+const finalScreen = document.getElementById("screen_final");
 
-// ------------------ Utility: show screen ------------------
-function showScreen(screenEl){
-  [screenMenu, screenGame, screenFinal].forEach(s => s.classList.remove("active"));
-  screenEl.classList.add("active");
+function show(screen){
+  mainScreen.classList.remove("active");
+  gameScreen.classList.remove("active");
+  finalScreen.classList.remove("active");
+  screen.classList.add("active");
 }
 
-// ------------------ Preload images ------------------
-function loadImage(name){
-  return new Promise(res => {
+// ------------------ Load images ------------------
+function loadImages(list){
+  const promises = list.map(src => new Promise(res=>{
     const img = new Image();
-    img.onload = () => { images[name] = img; res(); };
-    img.onerror = () => { console.warn("Failed to load:", name); images[name] = null; res(); };
-    img.src = `images/${name}.png`;
-  });
+    img.onload = ()=>{ images[src]=img; res(); };
+    img.onerror = ()=>{ console.warn("Missing:",src); images[src]=null; res(); };
+    img.src = "images/"+src+".png";
+  }));
+  return Promise.all(promises);
 }
 
-async function preloadAll(){
-  const list = [baseName, ...headList, ...bodyList, ...legsList];
-  await Promise.all(list.map(n => loadImage(n)));
+// ------------------ Draw character ------------------
+function drawCharacter(ctx, x, y, scale=1){
+  ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+
+  if(images[baseGirl])
+    ctx.drawImage(images[baseGirl], x, y, 200*scale, 400*scale);
+
+  drawItem(ctx, headList[outfitState.head], x, y, scale, animating.head);
+  drawItem(ctx, bodyList[outfitState.body], x, y, scale, animating.body);
+  drawItem(ctx, legsList[outfitState.legs], x, y, scale, animating.legs);
 }
 
-// ------------------ Drawing helpers ------------------
-function drawStaticCharacter(ctx, x=150, y=50, scale=1.5){
-  // Draw base
-  if(images[baseName]) ctx.drawImage(images[baseName], x, y, 200*scale, 400*scale);
+function drawItem(ctx, src, x, y, scale, animate){
+  const img = images[src];
+  if(!img) return;
 
-  // Draw items without animation (used for export / final)
-  const headImg = images[ headList[outfitState.head] ];
-  const bodyImg = images[ bodyList[outfitState.body] ];
-  const legsImg = images[ legsList[outfitState.legs] ];
-
-  if(headImg) ctx.drawImage(headImg, x, y, 200*scale, 400*scale);
-  if(bodyImg) ctx.drawImage(bodyImg, x, y, 200*scale, 400*scale);
-  if(legsImg) ctx.drawImage(legsImg, x, y, 200*scale, 400*scale);
-}
-
-function drawAnimatedCharacter(ctx, x=150, y=50, scale=1.5){
-  ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
-
-  // draw base first
-  if(images[baseName]) ctx.drawImage(images[baseName], x, y, 200*scale, 400*scale);
-
-  // helper to draw one layer with progress
-  function drawLayer(list, idx, progress){
-    const img = images[list[idx]];
-    if(!img) return;
-    if(progress >= 1){
-      ctx.globalAlpha = 1;
-      ctx.drawImage(img, x, y, 200*scale, 400*scale);
-      ctx.globalAlpha = 1;
-    } else {
-      // easing (smooth)
-      const p = easeOutCubic(progress);
+  if(animate){
+    let start = null;
+    function animStep(ts){
+      if(!start) start = ts;
+      const p = Math.min((ts-start)/300,1);
       ctx.globalAlpha = p;
-      const offsetY = -20 * (1 - p); // appear from above
-      ctx.drawImage(img, x, y + offsetY, 200*scale, 400*scale);
+      ctx.drawImage(img, x, y - 20*(1-p), 200*scale, 400*scale);
       ctx.globalAlpha = 1;
+
+      if(p < 1) requestAnimationFrame(animStep);
     }
+    requestAnimationFrame(animStep);
+  } else {
+    ctx.drawImage(img, x, y, 200*scale, 400*scale);
   }
-
-  drawLayer(headList, outfitState.head, animProgress.head);
-  drawLayer(bodyList, outfitState.body, animProgress.body);
-  drawLayer(legsList, outfitState.legs, animProgress.legs);
 }
 
-// simple ease
-function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
-
-// ------------------ Animation loop ------------------
-function tick(ts){
-  if(!lastTimestamp) lastTimestamp = ts;
-  const dt = ts - lastTimestamp;
-  lastTimestamp = ts;
-
-  // progress animations
-  ["head","body","legs"].forEach(k=>{
-    if(animProgress[k] < 1){
-      animProgress[k] += dt / animDuration;
-      if(animProgress[k] > 1) animProgress[k] = 1;
-    }
-  });
-
-  // render interactive canvas (with animation)
-  drawAnimatedCharacter(ctx, 150, 50, 1.5);
-
-  requestAnimationFrame(tick);
-}
-
-// ------------------ Switch clothes (trigger animation) ------------------
+// ------------------ Switch clothes ------------------
 function switchClothes(category, dir){
   if(category === "head"){
+    animating.head = true;
     outfitState.head = (outfitState.head + dir + headList.length) % headList.length;
-    animProgress.head = 0;
-  } else if(category === "body"){
-    outfitState.body = (outfitState.body + dir + bodyList.length) % bodyList.length;
-    animProgress.body = 0;
-  } else if(category === "legs"){
-    outfitState.legs = (outfitState.legs + dir + legsList.length) % legsList.length;
-    animProgress.legs = 0;
   }
+  if(category === "body"){
+    animating.body = true;
+    outfitState.body = (outfitState.body + dir + bodyList.length) % bodyList.length;
+  }
+  if(category === "legs"){
+    animating.legs = true;
+    outfitState.legs = (outfitState.legs + dir + legsList.length) % legsList.length;
+  }
+
+  drawCharacter(ctx, 150, 50, 1.5);
 }
 
-// ------------------ Event listeners ------------------
-// arrows
-document.getElementById("headLeft").onclick = ()=> switchClothes("head",-1);
-document.getElementById("headRight").onclick = ()=> switchClothes("head",1);
-document.getElementById("bodyLeft").onclick = ()=> switchClothes("body",-1);
-document.getElementById("bodyRight").onclick = ()=> switchClothes("body",1);
-document.getElementById("legsLeft").onclick = ()=> switchClothes("legs",-1);
-document.getElementById("legsRight").onclick = ()=> switchClothes("legs",1);
+// ------------------ Buttons ------------------
+document.getElementById("headLeft").onclick = ()=>switchClothes("head",-1);
+document.getElementById("headRight").onclick = ()=>switchClothes("head",1);
 
-// start
-startBtn.onclick = () => {
-  showScreen(screenGame);
-  // ensure canvas renders immediately
-  drawAnimatedCharacter(ctx, 150, 50, 1.5);
-};
+document.getElementById("bodyLeft").onclick = ()=>switchClothes("body",-1);
+document.getElementById("bodyRight").onclick = ()=>switchClothes("body",1);
 
-// done -> final
-doneBtn.onclick = () => {
-  showScreen(screenFinal);
+document.getElementById("legsLeft").onclick = ()=>switchClothes("legs",-1);
+document.getElementById("legsRight").onclick = ()=>switchClothes("legs",1);
 
-  // trigger pedestal fade/scale animation class
+// Start button
+document.getElementById("startBtn").onclick = ()=> show(gameScreen);
+
+// Done → final screen
+document.getElementById("doneBtn").onclick = ()=>{
+  show(finalScreen);
+
   exportCanvas.classList.remove("active");
-  setTimeout(()=> exportCanvas.classList.add("active"), 60);
+  setTimeout(()=>exportCanvas.classList.add("active"),50);
 
-  // draw final static composition
   drawFinal();
 };
 
-// confirm / add nickname (do not auto-save)
-confirmBtn.onclick = () => {
-  nickname = document.getElementById("nickname").value.trim() || "Player";
+// Confirm nickname
+document.getElementById("confirmBtn").onclick = ()=>{
+  nickname = document.getElementById("nickname").value || "Player";
   drawFinal();
 };
 
-// save png
-saveBtn.onclick = () => {
-  // ensure final is drawn
-  drawFinal();
-  const link = document.createElement("a");
-  link.download = "buffy.png";
-  link.href = exportCanvas.toDataURL("image/png");
-  link.click();
-};
+// Save PNG
+document.getElementById("saveBtn").onclick = ()=> savePNG();
 
-// ------------------ Draw final (export) ------------------
+// ------------------ Final Screen Draw ------------------
 function drawFinal(){
-  exportCtx.clearRect(0,0, exportCanvas.width, exportCanvas.height);
+  exportCtx.clearRect(0,0,600,600);
 
-  // background gradient
   const grad = exportCtx.createLinearGradient(0,0,0,600);
   grad.addColorStop(0,"#0f0c29");
   grad.addColorStop(0.5,"#302b63");
@@ -187,33 +134,34 @@ function drawFinal(){
   exportCtx.fillStyle = grad;
   exportCtx.fillRect(0,0,600,600);
 
-  // neon pedestal (glow)
-  exportCtx.save();
   exportCtx.fillStyle = "#00ff99";
   exportCtx.shadowColor = "#00ffe0";
   exportCtx.shadowBlur = 30;
   exportCtx.fillRect(100,500,400,40);
-  exportCtx.restore();
+  exportCtx.shadowBlur = 0;
 
-  // draw character statically (no animation)
-  drawStaticCharacter(exportCtx, 150, 100, 1.5);
+  drawCharacter(exportCtx, 150, 100, 1.5);
 
-  // nickname text
-  exportCtx.save();
   exportCtx.font = "28px Arial";
   exportCtx.fillStyle = "#0ff";
-  exportCtx.textAlign = "center";
   exportCtx.shadowColor = "#0ff";
-  exportCtx.shadowBlur = 12;
-  exportCtx.fillText(nickname || "Player", exportCanvas.width/2, 470);
-  exportCtx.restore();
+  exportCtx.shadowBlur = 10;
+  exportCtx.fillText(nickname, 220, 470);
+  exportCtx.shadowBlur = 0;
 }
 
-// ------------------ Init ------------------
-(async function init(){
-  await preloadAll();
-  // start render loop
-  requestAnimationFrame(tick);
-  // initial static draw in case user doesn't animate
-  drawAnimatedCharacter(ctx, 150, 50, 1.5);
-})();
+// ------------------ Save PNG ------------------
+function savePNG(){
+  const link = document.createElement("a");
+  link.download = "buffi.png";
+  link.href = exportCanvas.toDataURL();
+  link.click();
+}
+
+// ------------------ Preload ------------------
+async function preload(){
+  await loadImages([baseGirl, ...headList, ...bodyList, ...legsList]);
+  drawCharacter(ctx, 150, 50, 1.5);
+}
+
+preload();
